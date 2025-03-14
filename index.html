@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OpenRouter Chat Bot</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+    }
+    textarea {
+        width: 100%;
+        height: 300px;
+        margin-top: 10px;
+    }
+    .controls {
+        display: flex;
+        margin-top: 10px;
+    }
+    .controls input {
+        flex-grow: 1;
+        margin-right: 10px;
+    }
+    .attachments {
+        margin-top: 10px;
+    }
+    .copy-button {
+        margin-top: 10px;
+    }
+    .author {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #666;
+        text-align: center;
+    }
+</style>
+</head>
+<body>
+    <h1>OpenRouter Chat Bot</h1>
+    <div>
+        <label for="model">Model:</label>
+        <select id="model">
+            <option value="deepseek/deepseek-r1:free">deepseek/deepseek-r1:free</option>
+            <option value="qwen/qwen2.5-vl-72b-instruct:free">qwen/qwen2.5-vl-72b-instruct:free</option>
+            <option value="deepseek/deepseek-chat:free">deepseek/deepseek-chat:free</option>
+            <option value="meta-llama/llama-3.3-70b-instruct:free">meta-llama/llama-3.3-70b-instruct:free</option>
+            <option value="google/gemini-2.0-flash-lite-preview-02-05:free">google/gemini-2.0-flash-lite-preview-02-05:free</option>
+            <option value="google/gemini-2.0-flash-exp:free">google/gemini-2.0-flash-exp:free</option>
+            <option value="google/gemini-2.0-pro-exp-02-05:free">google/gemini-2.0-pro-exp-02-05:free</option>
+            <option value="google/gemini-2.0-flash-thinking-exp:free">google/gemini-2.0-flash-thinking-exp:free</option>
+            <option value="deepseek/deepseek-r1-zero:free">deepseek/deepseek-r1-zero:free</option>
+            <option value="deepseek/deepseek-r1-distill-llama-70b:free">deepseek/deepseek-r1-distill-llama-70b:free</option>
+            <option value="qwen/qwq-32b:free">qwen/qwq-32b:free</option>
+            <option value="cognitivecomputations/dolphin3.0-r1-mistral-24b:free">cognitivecomputations/dolphin3.0-r1-mistral-24b:free</option>
+        </select>
+        <button onclick="loadApiKey()">Load API Key</button>
+        <span id="apiStatus">❌ Not loaded</span>
+    </div>
+    <textarea id="chatHistory" disabled></textarea>
+    <button class="copy-button" onclick="copyChatHistory()">Copy Chat History</button>
+    <button class="new-chat-button" onclick="newChat()">New Chat</button> <!-- New Chat Button -->
+    <div class="controls">
+        <input type="file" id="fileInput" multiple style="display:none;" onchange="handleFiles(this.files)">
+        <button onclick="document.getElementById('fileInput').click()">📎 Attach</button>
+        <input type="text" id="messageInput" placeholder="Type your message here..." onkeypress="handleKeyPress(event)">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+    <div class="attachments" id="attachments"></div>
+    <div class="author">Author: bobchange0301@gmail.com</div>
+
+    <script>
+        let apiKey = null;
+        let attachedFiles = [];
+
+        function loadApiKey() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.onchange = e => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    apiKey = e.target.result.trim();
+                    document.getElementById('apiStatus').textContent = '✅ Loaded';
+                    document.getElementById('apiStatus').style.color = 'green';
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                if (file.size > 5 * 1024 * 1024) {
+                    alert(`File ${file.name} exceeds 5MB limit`);
+                    return;
+                }
+                attachedFiles.push(file);
+                updateAttachmentDisplay();
+            });
+        }
+
+        function updateAttachmentDisplay() {
+            const attachmentsDiv = document.getElementById('attachments');
+            attachmentsDiv.innerHTML = 'Attached Files: ';
+            attachedFiles.forEach((file, index) => {
+                const span = document.createElement('span');
+                span.textContent = file.name;
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = '×';
+                removeBtn.onclick = () => {
+                    attachedFiles.splice(index, 1);
+                    updateAttachmentDisplay();
+                };
+                attachmentsDiv.appendChild(span);
+                attachmentsDiv.appendChild(removeBtn);
+            });
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function sendMessage() {
+            if (!apiKey) {
+                alert('API Key not loaded');
+                return;
+            }
+            const userInput = document.getElementById('messageInput').value.trim();
+            if (!userInput && attachedFiles.length === 0) {
+                alert('Please enter message or attach files');
+                return;
+            }
+            document.getElementById('messageInput').value = '';
+            const timestamp = new Date().toLocaleTimeString();
+            let messageHeader = `[User] ${timestamp}\n${userInput}`;
+            updateChatHistory(messageHeader);
+
+            if (attachedFiles.length > 0) {
+                let fileNames = attachedFiles.map(file => file.name).join(", ");
+                updateChatHistory(`[Attachments]\n${fileNames}`);
+                let fileContents = [];
+                attachedFiles.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        fileContents.push(e.target.result);
+                        if (fileContents.length === attachedFiles.length) {
+                            processMessage(userInput + "\n\nAttached files content:\n" + fileContents.join("\n\n"));
+                        }
+                    };
+                    reader.readAsText(file);
+                });
+            } else {
+                processMessage(userInput);
+            }
+        }
+
+        function processMessage(message) {
+            const model = document.getElementById('model').value;
+            fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'http://localhost'
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [{ role: 'user', content: message }]
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                const timestamp = new Date().toLocaleTimeString();
+                updateChatHistory(`[Assistant] ${timestamp}\n${data.choices[0].message.content}`);
+            })
+            .catch(error => {
+                updateChatHistory(`[System Error] ${error.message}`);
+            });
+        }
+
+        function updateChatHistory(message) {
+            const chatHistory = document.getElementById('chatHistory');
+            chatHistory.value += message + "\n\n";
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function copyChatHistory() {
+            const chatHistory = document.getElementById('chatHistory');
+            chatHistory.disabled = false; // Enable the textarea temporarily
+            chatHistory.select();
+            document.execCommand('copy');
+            chatHistory.disabled = true; // Disable it again
+            alert('Chat history copied to clipboard!');
+        }
+
+        function newChat() {
+            // Clear the chat history
+            document.getElementById('chatHistory').value = '';
+            // Clear the attached files
+            attachedFiles = [];
+            updateAttachmentDisplay();
+            // Clear the message input
+            document.getElementById('messageInput').value = '';
+        }
+    </script>
+</body>
+</html>
